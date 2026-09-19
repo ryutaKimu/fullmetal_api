@@ -6,6 +6,9 @@ import (
 	"net/http"
 )
 
+// charsetを明示しないと、ブラウザによっては文字コードを誤推測して日本語が文字化けする。
+const contentTypeJSON = "application/json; charset=utf-8"
+
 type narrationResponse struct {
 	Episode    int      `json:"episode"`
 	Title      string   `json:"title"`
@@ -39,7 +42,7 @@ func (h *NarrationHandler) NarrationHandler(w http.ResponseWriter, r *http.Reque
 
 	// Todo: 言語リストを作成し、パラメーターがリストに含まれるかの判定を行うようにする。
 	if lang != "ja" && lang != "en" {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(response{Data: nil, Error: "the language is not supported"})
 		return
@@ -47,7 +50,7 @@ func (h *NarrationHandler) NarrationHandler(w http.ResponseWriter, r *http.Reque
 
 	narration := h.service.GetRandomNarration(lang)
 	if narration == nil {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response{})
 		return
@@ -58,7 +61,7 @@ func (h *NarrationHandler) NarrationHandler(w http.ResponseWriter, r *http.Reque
 		Title:      *narration.Title[lang], // サービスレイヤーで非nilのものに絞り込み済み
 		Narrations: narration.Narrations[lang],
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response{Data: &res})
 }

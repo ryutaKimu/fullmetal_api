@@ -85,8 +85,9 @@ func TestNarrationHandler_正常系(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 			}
-			if got := rec.Header().Get("Content-Type"); got != "application/json" {
-				t.Errorf("Content-Type = %q, want application/json", got)
+			// charset が無いとブラウザで日本語が文字化けするため、値まで含めて検証する
+			if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+				t.Errorf("Content-Type = %q, want application/json; charset=utf-8", got)
 			}
 			if svc.gotLang != tt.wantLang {
 				t.Errorf("サービスに渡された lang = %q, want %q", svc.gotLang, tt.wantLang)
@@ -128,8 +129,9 @@ func TestNarrationHandler_未対応の言語は400を返す(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 			}
-			if got := rec.Header().Get("Content-Type"); got != "application/json" {
-				t.Errorf("Content-Type = %q, want application/json", got)
+			// charset が無いとブラウザで日本語が文字化けするため、値まで含めて検証する
+			if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+				t.Errorf("Content-Type = %q, want application/json; charset=utf-8", got)
 			}
 			if svc.gotLang != "" {
 				t.Errorf("サービスは呼ばれないはずだが lang=%q で呼ばれた", svc.gotLang)
