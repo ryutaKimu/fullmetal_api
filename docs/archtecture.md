@@ -8,6 +8,7 @@
 │   └── api/
 │       └── main.go          # 起動処理
 ├── internal/
+│   ├── router/              # パスとバージョン（/v1）の対応づけ
 │   ├── handler/             # リクエスト受付・レスポンス
 │   ├── service/             # 絞り込み・ランダム選択
 │   ├── repository/          # JSON読み込み
