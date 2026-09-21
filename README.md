@@ -26,8 +26,15 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | GET | `/narrations/random` | ナレーションを1件ランダムに返す |
+| GET | `/narrations/{episode}` | エピソードで指定されたナレーションを返す |
 
-現在はこの1つのみです。ルート（`/`）を含む他のパスは 404 を返します。
+現在はこの2つのみです。ルート（`/`）を含む他のパスは 404 を返します。
+
+## パスパラメータ
+
+| 名前 | 値 | 説明 |
+| --- | --- | --- |
+| `episode` | `1`〜`63` | 取得するエピソード。整数でない場合は 400、該当データがない場合は 404 |
 
 ## クエリパラメータ
 
@@ -54,10 +61,24 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 }
 ```
 
-該当データがない場合（200）
+`/narrations/random` で該当データがない場合（200）
 
 ```json
 { "data": null }
+```
+
+`/narrations/{episode}` で該当データがない場合（404）
+
+```json
+{ "data": null, "error": "narration not found" }
+```
+
+エピソードが存在しない場合と、存在しても指定言語が未翻訳の場合は、どちらもこの 404 になります。
+
+`episode` が整数でない場合（400）
+
+```json
+{ "data": null, "error": "episode must be an integer" }
 ```
 
 対応していない言語を指定した場合（400）
@@ -66,14 +87,14 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 { "data": null, "error": "the language is not supported" }
 ```
 
-エラーではなく 200 + `data: null` を返す理由は `docs/faq.md` に記載しています。
+`/narrations/random` がエラーではなく 200 + `data: null` を返す理由は `docs/faq.md` に記載しています。
 
 # データの収録状況
 
 - 全63件（episode 1〜63）
 - **日本語（`ja`）のみ収録済み。英語（`en`）は全件未翻訳（null）です。**
 
-`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は常に `{ "data": null }` を返します。英訳は今後、段階的に追加していく予定です。
+`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は `/narrations/random` なら 200 + `{ "data": null }`、`/narrations/{episode}` なら 404 を返します。英訳は今後、段階的に追加していく予定です。
 
 # ローカルでの実行
 
@@ -83,6 +104,7 @@ go run ./cmd/api
 
 curl "http://localhost:9090/narrations/random"
 curl "http://localhost:9090/narrations/random?lang=en"
+curl "http://localhost:9090/narrations/5"
 ```
 
 ポートは環境変数 `PORT` で変更できます（未指定時は `9090`）。
