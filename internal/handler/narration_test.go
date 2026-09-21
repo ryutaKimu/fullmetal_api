@@ -176,3 +176,33 @@ func TestNarrationHandler_該当データがない場合は200でdataがnull(t *
 		t.Errorf("error キーは含めない想定 (body=%s)", rec.Body.String())
 	}
 }
+
+// serviceが非nilのtitleに絞り込む前提が崩れても、デリファレンスでpanicせず500を返すことを固定する。
+func TestNarrationHandler_titleがnilなら500を返す(t *testing.T) {
+	svc := &fakeService{narration: &model.Narration{
+		Episode:    1,
+		Title:      map[string]*string{"en": nil},
+		Narrations: map[string][]string{"en": {"line1", "line2"}},
+	}}
+	rec := doRequest(t, svc, "/narrations/random?lang=en")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	// charset が無いとブラウザで日本語が文字化けするため、値まで含めて検証する
+	if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
+		t.Errorf("Content-Type = %q, want %q", got, contentTypeJSON)
+	}
+
+	var res response
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	// data はエラー時も常に null で返す（利用側が data の有無だけで判定できるようにするため）
+	if res.Data != nil {
+		t.Errorf("data = %+v, want null", res.Data)
+	}
+	if res.Error != "internal server error" {
+		t.Errorf("error = %q, want %q", res.Error, "internal server error")
+	}
+}

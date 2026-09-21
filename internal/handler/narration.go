@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fullmetal-api/internal/model"
+	"log"
 	"net/http"
 )
 
@@ -42,26 +43,34 @@ func (h *NarrationHandler) NarrationHandler(w http.ResponseWriter, r *http.Reque
 
 	// Todo: 言語リストを作成し、パラメーターがリストに含まれるかの判定を行うようにする。
 	if lang != "ja" && lang != "en" {
-		w.Header().Set("Content-Type", contentTypeJSON)
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(response{Data: nil, Error: "the language is not supported"})
+		jsonEncoder(w, http.StatusBadRequest, response{Data: nil, Error: "the language is not supported"})
 		return
 	}
 
 	narration := h.service.GetRandomNarration(lang)
 	if narration == nil {
-		w.Header().Set("Content-Type", contentTypeJSON)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response{})
+		jsonEncoder(w, http.StatusOK, response{})
+		return
+	}
+
+	title := narration.Title[lang]
+	if title == nil {
+		// serviceで非nilに絞り込み済みなので、ここに来るのは不変条件の破れ
+		log.Printf("unexpected nil title: episode=%d lang=%s", narration.Episode, lang)
+		jsonEncoder(w, http.StatusInternalServerError, response{Data: nil, Error: "internal server error"})
 		return
 	}
 
 	res := narrationResponse{
 		Episode:    narration.Episode,
-		Title:      *narration.Title[lang], // サービスレイヤーで非nilのものに絞り込み済み
+		Title:      *title,
 		Narrations: narration.Narrations[lang],
 	}
+	jsonEncoder(w, http.StatusOK, response{Data: &res})
+}
+
+func jsonEncoder(w http.ResponseWriter, statusCode int, res response) {
 	w.Header().Set("Content-Type", contentTypeJSON)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response{Data: &res})
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(res)
 }
