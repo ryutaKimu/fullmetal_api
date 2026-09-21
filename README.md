@@ -1,5 +1,7 @@
 # 本リポジトリについて
 
+[![CI](https://github.com/v420v/fullmetal_api/actions/workflows/ci.yml/badge.svg)](https://github.com/v420v/fullmetal_api/actions/workflows/ci.yml)
+
 こちらは鋼の錬金術師のナレーションを返す非公式APIです。
 あくまでファンメイドであるため、公式とは一切関係ありません。
 
@@ -118,6 +120,8 @@ curl "http://localhost:9090/v1/narrations/5"
 ```sh
 go test ./...
 ```
+
+`main` への push と Pull Request では GitHub Actions（`.github/workflows/ci.yml`）が gofmt・go vet・go test（`-race`）を自動実行します。
 
 # データを追加・修正するには
 
