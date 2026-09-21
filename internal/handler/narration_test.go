@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -11,8 +13,10 @@ import (
 )
 
 type fakeService struct {
-	narration *model.Narration
-	gotLang   string
+	narration  *model.Narration
+	err        error
+	gotLang    string
+	gotEpisode int
 }
 
 func (s *fakeService) GetRandomNarration(lang string) *model.Narration {
@@ -20,14 +24,19 @@ func (s *fakeService) GetRandomNarration(lang string) *model.Narration {
 	return s.narration
 }
 
-func ptr(s string) *string {
-	return &s
+func (s *fakeService) GetNarrationByEpisode(episode int, lang string) (*model.Narration, error) {
+	s.gotLang = lang
+	s.gotEpisode = episode
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.narration, nil
 }
 
 func newNarration() *model.Narration {
 	return &model.Narration{
 		Episode: 1,
-		Title:   map[string]*string{"ja": ptr("鋼の錬金術師"), "en": ptr("Fullmetal Alchemist")},
+		Title:   map[string]*string{"ja": new("鋼の錬金術師"), "en": new("Fullmetal Alchemist")},
 		Narrations: map[string][]string{
 			"ja": {"セリフ1", "セリフ2"},
 			"en": {"line1", "line2"},
@@ -42,6 +51,19 @@ func doRequest(t *testing.T, svc NarrationService, target string) *httptest.Resp
 	req := httptest.NewRequest(http.MethodGet, target, nil)
 	rec := httptest.NewRecorder()
 	h.NarrationHandler(rec, req)
+
+	return rec
+}
+
+func doEpisodeRequest(t *testing.T, svc NarrationService, episode, query string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	h := NewNarrationHandler(svc)
+	req := httptest.NewRequest(http.MethodGet, "/narrations/"+episode+query, nil)
+	// muxを経由せずハンドラを直接呼ぶため、パスパラメーターは手で設定する
+	req.SetPathValue("episode", episode)
+	rec := httptest.NewRecorder()
+	h.OneNarrationHandler(rec, req)
 
 	return rec
 }
@@ -201,6 +223,182 @@ func TestNarrationHandler_titleがnilなら500を返す(t *testing.T) {
 	// data はエラー時も常に null で返す（利用側が data の有無だけで判定できるようにするため）
 	if res.Data != nil {
 		t.Errorf("data = %+v, want null", res.Data)
+	}
+	if res.Error != "internal server error" {
+		t.Errorf("error = %q, want %q", res.Error, "internal server error")
+	}
+}
+
+func TestOneNarrationHandler_正常系(t *testing.T) {
+	tests := []struct {
+		name           string
+		query          string
+		wantLang       string
+		wantTitle      string
+		wantNarrations []string
+	}{
+		{
+			name:           "langを省略すると日本語で返る",
+			query:          "",
+			wantLang:       "ja",
+			wantTitle:      "鋼の錬金術師",
+			wantNarrations: []string{"セリフ1", "セリフ2"},
+		},
+		{
+			name:           "lang=enを指定すると英語で返る",
+			query:          "?lang=en",
+			wantLang:       "en",
+			wantTitle:      "Fullmetal Alchemist",
+			wantNarrations: []string{"line1", "line2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &fakeService{narration: newNarration()}
+			rec := doEpisodeRequest(t, svc, "5", tt.query)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
+				t.Errorf("Content-Type = %q, want %q", got, contentTypeJSON)
+			}
+			// パスパラメーターがintへ変換されてサービスに渡ることを確認する
+			if svc.gotEpisode != 5 {
+				t.Errorf("サービスに渡された episode = %d, want 5", svc.gotEpisode)
+			}
+			if svc.gotLang != tt.wantLang {
+				t.Errorf("サービスに渡された lang = %q, want %q", svc.gotLang, tt.wantLang)
+			}
+
+			var res response
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+			}
+			if res.Error != "" {
+				t.Errorf("error = %q, want 空文字", res.Error)
+			}
+			if res.Data == nil {
+				t.Fatal("data を期待したが null だった")
+			}
+			if res.Data.Title != tt.wantTitle {
+				t.Errorf("title = %q, want %q", res.Data.Title, tt.wantTitle)
+			}
+			if !slices.Equal(res.Data.Narrations, tt.wantNarrations) {
+				t.Errorf("narrations = %v, want %v", res.Data.Narrations, tt.wantNarrations)
+			}
+		})
+	}
+}
+
+func TestOneNarrationHandler_数値でないepisodeは400を返す(t *testing.T) {
+	for _, episode := range []string{"abc", "1.5", "5x", ""} {
+		t.Run(episode, func(t *testing.T) {
+			svc := &fakeService{narration: newNarration()}
+			rec := doEpisodeRequest(t, svc, episode, "")
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+			if svc.gotEpisode != 0 {
+				t.Errorf("サービスは呼ばれないはずだが episode=%d で呼ばれた", svc.gotEpisode)
+			}
+
+			var res response
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+			}
+			if res.Data != nil {
+				t.Errorf("data = %+v, want null", res.Data)
+			}
+			if res.Error != "episode must be an integer" {
+				t.Errorf("error = %q, want %q", res.Error, "episode must be an integer")
+			}
+		})
+	}
+}
+
+func TestOneNarrationHandler_未対応の言語は400を返す(t *testing.T) {
+	svc := &fakeService{narration: newNarration()}
+	rec := doEpisodeRequest(t, svc, "5", "?lang=fr")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if svc.gotLang != "" {
+		t.Errorf("サービスは呼ばれないはずだが lang=%q で呼ばれた", svc.gotLang)
+	}
+
+	var res response
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	if res.Error != "the language is not supported" {
+		t.Errorf("error = %q, want %q", res.Error, "the language is not supported")
+	}
+}
+
+// エピソード不在と未翻訳はserviceが同じErrNotFoundで返すため、どちらも404になる。
+func TestOneNarrationHandler_該当データがない場合は404を返す(t *testing.T) {
+	svc := &fakeService{err: fmt.Errorf("episode:999: %w", model.ErrNotFound)}
+	rec := doEpisodeRequest(t, svc, "999", "")
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
+		t.Errorf("Content-Type = %q, want %q", got, contentTypeJSON)
+	}
+
+	var res response
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	if res.Data != nil {
+		t.Errorf("data = %+v, want null", res.Data)
+	}
+	if res.Error != "narration not found" {
+		t.Errorf("error = %q, want %q", res.Error, "narration not found")
+	}
+}
+
+// ErrNotFound以外のエラーを404へ吸い込ませず、500として表面化させることを固定する。
+func TestOneNarrationHandler_想定外のエラーは500を返す(t *testing.T) {
+	svc := &fakeService{err: errors.New("unexpected failure")}
+	rec := doEpisodeRequest(t, svc, "5", "")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+
+	var res response
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	if res.Data != nil {
+		t.Errorf("data = %+v, want null", res.Data)
+	}
+	if res.Error != "internal server error" {
+		t.Errorf("error = %q, want %q", res.Error, "internal server error")
+	}
+}
+
+func TestOneNarrationHandler_titleがnilなら500を返す(t *testing.T) {
+	svc := &fakeService{narration: &model.Narration{
+		Episode:    5,
+		Title:      map[string]*string{"en": nil},
+		Narrations: map[string][]string{"en": {"line1", "line2"}},
+	}}
+	rec := doEpisodeRequest(t, svc, "5", "?lang=en")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+
+	var res response
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
 	}
 	if res.Error != "internal server error" {
 		t.Errorf("error = %q, want %q", res.Error, "internal server error")

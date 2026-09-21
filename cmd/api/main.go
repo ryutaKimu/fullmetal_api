@@ -22,7 +22,9 @@ func main() {
 	h := handler.NewNarrationHandler(svc)
 
 	mux := http.NewServeMux()
+	// ServeMuxはワイルドカードよりリテラルを優先するため、randomは{episode}に吸われない。
 	mux.HandleFunc("GET /narrations/random", h.NarrationHandler)
+	mux.HandleFunc("GET /narrations/{episode}", h.OneNarrationHandler)
 
 	// ホスティング先がPORTを指定する場合に備え、環境変数を優先する
 	port := os.Getenv("PORT")

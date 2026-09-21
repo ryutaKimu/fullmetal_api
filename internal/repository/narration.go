@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"fmt"
 	"fullmetal-api/internal/model"
 )
 
@@ -19,4 +20,13 @@ func NewNarrationRepository(data []byte) (*NarrationRepository, error) {
 
 func (r *NarrationRepository) FindAll() []model.Narration {
 	return r.narration
+}
+
+func (r *NarrationRepository) FindEpisode(episode int) (*model.Narration, error) {
+	for _, n := range r.narration {
+		if n.Episode == episode {
+			return &n, nil
+		}
+	}
+	return nil, fmt.Errorf("episode:%d: %w", episode, model.ErrNotFound)
 }
