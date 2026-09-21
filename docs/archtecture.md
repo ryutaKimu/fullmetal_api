@@ -4,6 +4,10 @@
 # ディレクトリ構成
 ```
 .
+├── .github/
+│   ├── workflows/
+│   │   └── ci.yml           # GitHub Actions（テスト・静的解析）
+│   └── dependabot.yml       # アクションのバージョン更新
 ├── cmd/
 │   └── api/
 │       └── main.go          # 起動処理

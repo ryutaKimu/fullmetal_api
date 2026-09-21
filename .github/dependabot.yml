@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # 複数アクションの更新を 1 つの PR にまとめる
+    groups:
+      github-actions:
+        patterns:
+          - "*"
