@@ -2,7 +2,7 @@
 
 ## エンドポイント
 
-GET /narrations/random
+GET /v1/narrations/random
 lang（任意）：ja / en、省略時は ja
 対応外の値は400エラー
 

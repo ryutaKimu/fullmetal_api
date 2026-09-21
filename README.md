@@ -19,16 +19,20 @@ Go 1.26.4（標準ライブラリのみ。外部依存なし）
 
 # 使い方
 
-https://fullmetalapi.vercel.app/narrations/random にアクセス
+https://fullmetalapi.vercel.app/v1/narrations/random にアクセス
 
 ## エンドポイント
 
+APIはパスの先頭でバージョンを指定します（現行バージョンは `v1`）。
+
 | メソッド | パス | 説明 |
 | --- | --- | --- |
-| GET | `/narrations/random` | ナレーションを1件ランダムに返す |
-| GET | `/narrations/{episode}` | エピソードで指定されたナレーションを返す |
+| GET | `/v1/narrations/random` | ナレーションを1件ランダムに返す |
+| GET | `/v1/narrations/{episode}` | エピソードで指定されたナレーションを返す |
 
 現在はこの2つのみです。ルート（`/`）を含む他のパスは 404 を返します。
+
+バージョン導入前の旧パス `/narrations/...` へのアクセスは、互換性のため対応する `/v1/narrations/...` へ 308 リダイレクトされます（クエリパラメータも引き継がれます）。新規の利用では `/v1` を直接指定してください。
 
 ## パスパラメータ
 
@@ -61,13 +65,13 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 }
 ```
 
-`/narrations/random` で該当データがない場合（200）
+`/v1/narrations/random` で該当データがない場合（200）
 
 ```json
 { "data": null }
 ```
 
-`/narrations/{episode}` で該当データがない場合（404）
+`/v1/narrations/{episode}` で該当データがない場合（404）
 
 ```json
 { "data": null, "error": "narration not found" }
@@ -87,14 +91,14 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 { "data": null, "error": "the language is not supported" }
 ```
 
-`/narrations/random` がエラーではなく 200 + `data: null` を返す理由は `docs/faq.md` に記載しています。
+`/v1/narrations/random` がエラーではなく 200 + `data: null` を返す理由は `docs/faq.md` に記載しています。
 
 # データの収録状況
 
 - 全63件（episode 1〜63）
 - **日本語（`ja`）のみ収録済み。英語（`en`）は全件未翻訳（null）です。**
 
-`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は `/narrations/random` なら 200 + `{ "data": null }`、`/narrations/{episode}` なら 404 を返します。英訳は今後、段階的に追加していく予定です。
+`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は `/v1/narrations/random` なら 200 + `{ "data": null }`、`/v1/narrations/{episode}` なら 404 を返します。英訳は今後、段階的に追加していく予定です。
 
 # ローカルでの実行
 
@@ -102,9 +106,9 @@ https://fullmetalapi.vercel.app/narrations/random にアクセス
 go run ./cmd/api
 # => listening on :9090
 
-curl "http://localhost:9090/narrations/random"
-curl "http://localhost:9090/narrations/random?lang=en"
-curl "http://localhost:9090/narrations/5"
+curl "http://localhost:9090/v1/narrations/random"
+curl "http://localhost:9090/v1/narrations/random?lang=en"
+curl "http://localhost:9090/v1/narrations/5"
 ```
 
 ポートは環境変数 `PORT` で変更できます（未指定時は `9090`）。
