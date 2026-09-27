@@ -42,6 +42,30 @@ func (s NarrationService) GetRandomNarration(lang string) *model.Narration {
 	return &picked
 }
 
+func (s NarrationService) GetRandomNarrations(episodes int, lang string) ([]*model.Narration, error) {
+	if episodes > 63 || episodes <= 0 {
+		return nil, fmt.Errorf("episodes:%d error:%w", episodes, model.ErrInvalidEpisodes)
+	}
+	var candidates []*model.Narration
+	narrations := s.repo.FindAll()
+
+	for i := range narrations {
+		if hasTranslation(narrations[i], lang) {
+			candidates = append(candidates, &narrations[i])
+		}
+	}
+
+	if len(candidates) < episodes {
+		return nil, fmt.Errorf("candidates:%d less than episodes: %d error:%w", len(candidates), episodes, model.ErrNotFound)
+	}
+
+	rand.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+
+	return candidates[:episodes], nil
+}
+
 // エピソードが存在しない場合と、存在しても指定言語が未翻訳の場合は、
 // どちらもクライアントからは区別できない「見つからない」として扱う。
 func (s NarrationService) GetNarrationByEpisode(episode int, lang string) (*model.Narration, error) {

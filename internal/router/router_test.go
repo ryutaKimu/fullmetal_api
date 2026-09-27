@@ -17,6 +17,11 @@ func (s *fakeService) GetRandomNarration(lang string) *model.Narration {
 	return newNarration()
 }
 
+func (s *fakeService) GetRandomNarrations(episodes int, lang string) ([]*model.Narration, error) {
+	s.gotEpisode = episodes
+	return newNarrations(episodes), nil
+}
+
 func (s *fakeService) GetNarrationByEpisode(episode int, lang string) (*model.Narration, error) {
 	s.gotEpisode = episode
 	return newNarration(), nil
@@ -29,6 +34,16 @@ func newNarration() *model.Narration {
 		Title:      map[string]*string{"ja": &title},
 		Narrations: map[string][]string{"ja": {"セリフ1"}},
 	}
+}
+
+func newNarrations(n int) []*model.Narration {
+	rn := make([]*model.Narration, 0, n)
+	for i := 1; i <= n; i++ {
+		episode := newNarration()
+		episode.Episode = i
+		rn = append(rn, episode)
+	}
+	return rn
 }
 
 func doRequest(t *testing.T, target string) (*fakeService, *httptest.ResponseRecorder) {

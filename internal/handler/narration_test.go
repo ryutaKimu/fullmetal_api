@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"testing"
 
 	"fullmetal-api/internal/model"
@@ -14,6 +15,7 @@ import (
 
 type fakeService struct {
 	narration  *model.Narration
+	narrations []*model.Narration
 	err        error
 	gotLang    string
 	gotEpisode int
@@ -22,6 +24,15 @@ type fakeService struct {
 func (s *fakeService) GetRandomNarration(lang string) *model.Narration {
 	s.gotLang = lang
 	return s.narration
+}
+
+func (s *fakeService) GetRandomNarrations(episodes int, lang string) ([]*model.Narration, error) {
+	s.gotLang = lang
+	s.gotEpisode = episodes
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.narrations, nil
 }
 
 func (s *fakeService) GetNarrationByEpisode(episode int, lang string) (*model.Narration, error) {
@@ -44,6 +55,16 @@ func newNarration() *model.Narration {
 	}
 }
 
+func newNarrations(n int) []*model.Narration {
+	rn := make([]*model.Narration, 0, n)
+	for i := 1; i <= n; i++ {
+		episode := newNarration()
+		episode.Episode = i
+		rn = append(rn, episode)
+	}
+	return rn
+}
+
 func doRequest(t *testing.T, svc NarrationService, target string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -64,6 +85,18 @@ func doEpisodeRequest(t *testing.T, svc NarrationService, episode, query string)
 	req.SetPathValue("episode", episode)
 	rec := httptest.NewRecorder()
 	h.OneNarrationHandler(rec, req)
+
+	return rec
+}
+
+func doRandomEpisodesRequest(t *testing.T, svc NarrationService, episodes, query string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	h := NewNarrationHandler(svc)
+	req := httptest.NewRequest(http.MethodGet, "/narrations/random/"+episodes+query, nil)
+	req.SetPathValue("episodes", episodes)
+	rec := httptest.NewRecorder()
+	h.RandomNarrationsHandler(rec, req)
 
 	return rec
 }
@@ -399,6 +432,143 @@ func TestOneNarrationHandler_titleがnilなら500を返す(t *testing.T) {
 	var res response
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	if res.Error != "internal server error" {
+		t.Errorf("error = %q, want %q", res.Error, "internal server error")
+	}
+}
+
+func TestRandomNarrationsHandler_正常系(t *testing.T) {
+	tests := []struct {
+		name     string
+		episodes int
+		query    string
+		wantLang string
+	}{
+		{
+			name:     "langを省略すると日本語で返る",
+			episodes: 10,
+			query:    "",
+			wantLang: "ja",
+		},
+		{
+			name:     "lang=enを指定すると英語で返る",
+			query:    "?lang=en",
+			episodes: 20,
+			wantLang: "en",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := newNarrations(tt.episodes)
+			svc := &fakeService{narrations: want}
+			rec := doRandomEpisodesRequest(t, svc, strconv.Itoa(tt.episodes), tt.query)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+
+			if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
+				t.Errorf("Content-Type = %q, want %q", got, contentTypeJSON)
+			}
+
+			if svc.gotEpisode != tt.episodes {
+				t.Errorf("サービスに渡された episode = %d, want %d", svc.gotEpisode, tt.episodes)
+			}
+
+			if svc.gotLang != tt.wantLang {
+				t.Errorf("サービスに渡された lang = %q, want %q", svc.gotLang, tt.wantLang)
+			}
+
+			var res responses
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+			}
+			if res.Error != "" {
+				t.Errorf("error = %q, want 空文字", res.Error)
+			}
+			if res.Data == nil {
+				t.Fatal("data を期待したが null だった")
+			}
+
+			if tt.episodes != len(res.Data) {
+				t.Errorf("件数不一致 episode = %d, want %d", svc.gotEpisode, tt.episodes)
+			}
+
+			if tt.wantLang != svc.gotLang {
+				t.Errorf("言語不一致 lang = %s, want %s", svc.gotLang, tt.wantLang)
+			}
+
+		})
+	}
+}
+
+func TestRandomNarrationsHandler_数値でないepisodesは400を返す(t *testing.T) {
+	for _, episode := range []string{"test", "2x", "1.5", ""} {
+		t.Run(episode, func(t *testing.T) {
+			svc := &fakeService{}
+			rec := doRandomEpisodesRequest(t, svc, episode, "?lang=ja")
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+
+			if svc.gotEpisode != 0 {
+				t.Errorf("サービスは呼ばれないはずだが episode=%d で呼ばれた", svc.gotEpisode)
+			}
+
+			var res responses
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+			}
+
+			if res.Error != "episode must be an integer" {
+				t.Errorf("error = %q, want %q", res.Error, "episode must be an integer")
+			}
+		})
+	}
+}
+
+func TestRandomNarrationsHandler_未対応の言語は400を返す(t *testing.T) {
+	for _, lang := range []string{"?lang=fr", "?lang=de"} {
+		t.Run(lang, func(t *testing.T) {
+			svc := &fakeService{}
+			rec := doRandomEpisodesRequest(t, svc, "10", lang)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+
+			if svc.gotLang != "" {
+				t.Errorf("サービスは呼ばれないはずだが lang=%q で呼ばれた", svc.gotLang)
+			}
+
+			var res responses
+			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+				t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+			}
+		})
+	}
+
+}
+
+func TestRandomNarrationsHandler_titleがnilなら500を返す(t *testing.T) {
+	ns := newNarrations(3)
+	ns[1].Title = map[string]*string{}
+	svc := &fakeService{narrations: ns}
+	rec := doRandomEpisodesRequest(t, svc, "3", "?lang=ja")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+
+	var res responses
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("レスポンスのデコードに失敗: %v (body=%s)", err, rec.Body.String())
+	}
+	if res.Data != nil {
+		t.Errorf("data = %v, want nil", res.Data)
 	}
 	if res.Error != "internal server error" {
 		t.Errorf("error = %q, want %q", res.Error, "internal server error")
