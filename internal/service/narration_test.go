@@ -150,6 +150,22 @@ func TestNarrationService_GetRandomNarration_候補が複数なら偏らず選�
 	}
 }
 
+func TestNarrationService_GetRandomNarration_呼び出しごとにリポジトリを参照する(t *testing.T) {
+	repo := &fakeRepository{
+		narrations: []model.Narration{
+			newNarration(1, new("t1"), nil, []string{"n1"}, nil),
+		},
+	}
+	svc := NewNarrationService(repo)
+
+	svc.GetRandomNarration("ja")
+	svc.GetRandomNarration("ja")
+
+	if repo.callCount != 2 {
+		t.Errorf("FindAll の呼び出し回数 = %d, want 2", repo.callCount)
+	}
+}
+
 func TestNarrationService_GetNarrationByEpisode(t *testing.T) {
 	narrations := []model.Narration{
 		newNarration(1, new("第1話"), new("Episode 1"), []string{"セリフ1"}, []string{"line1"}),
@@ -257,18 +273,156 @@ func TestNarrationService_GetNarrationByEpisode(t *testing.T) {
 	}
 }
 
-func TestNarrationService_GetRandomNarration_呼び出しごとにリポジトリを参照する(t *testing.T) {
-	repo := &fakeRepository{
-		narrations: []model.Narration{
-			newNarration(1, new("t1"), nil, []string{"n1"}, nil),
+func TestNarrationService_GetRandomNarrations(t *testing.T) {
+	tests := []struct {
+		name       string
+		narrations []model.Narration
+		lang       string
+		episodes   int
+		wantErr    error
+	}{
+		{
+			name: "jaを指定すると指定件数が返る",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), nil, []string{"セリフ1"}, nil),
+				newNarration(2, new("はじまりの日"), new("The First Day"), []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "ja",
+			episodes: 2,
+			wantErr:  nil,
+		},
+		{
+			name: "enを指定すると英訳済みのデータのみ返る",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), nil, []string{"セリフ1"}, nil),
+				newNarration(2, new("はじまりの日"), new("The First Day"), []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "en",
+			episodes: 1,
+			wantErr:  nil,
+		},
+		{
+			name: "titleのみ英訳済みのデータは候補から除外される",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), new("Fullmetal Alchemist"), []string{"セリフ1"}, nil),
+			},
+			lang:     "en",
+			episodes: 1,
+			wantErr:  model.ErrNotFound,
+		},
+		{
+			name: "narrationsのみ英訳済みのデータは候補から除外される",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), nil, []string{"セリフ1"}, []string{"line1"}),
+			},
+			lang:     "en",
+			episodes: 1,
+			wantErr:  model.ErrNotFound,
+		},
+		{
+			name: "候補数がnのとき、episodes=nを指定すると成功する",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), new("Fullmetal Alchemist"), []string{"セリフ1"}, []string{"line1"}),
+				newNarration(2, new("邪教の街"), new("City of Heresy"), []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "en",
+			episodes: 2,
+			wantErr:  nil,
+		},
+		{
+			name: "候補数+1でエラー",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), new("Fullmetal Alchemist"), []string{"セリフ1"}, []string{"line1"}),
+				newNarration(2, new("邪教の街"), new("City of Heresy"), []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "en",
+			episodes: 3,
+			wantErr:  model.ErrNotFound,
+		},
+		{
+			name: "enで絞り込んだあと、候補数がepisodesより少ないならエラー",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), new("Fullmetal Alchemist"), []string{"セリフ1"}, []string{"line1"}),
+				newNarration(2, new("邪教の街"), nil, []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "en",
+			episodes: 2,
+			wantErr:  model.ErrNotFound,
+		},
+		{
+			name: "未対応の言語は候補不足エラー",
+			narrations: []model.Narration{
+				newNarration(1, new("鋼の錬金術師"), new("Fullmetal Alchemist"), []string{"セリフ1"}, []string{"line1"}),
+				newNarration(2, new("邪教の街"), new("City of Heresy"), []string{"セリフ2"}, []string{"line2"}),
+			},
+			lang:     "ru",
+			episodes: 1,
+			wantErr:  model.ErrNotFound,
+		},
+		{
+			name:       "データ0件は候補不足エラー",
+			narrations: nil,
+			lang:       "ja",
+			episodes:   1,
+			wantErr:    model.ErrNotFound,
 		},
 	}
-	svc := NewNarrationService(repo)
 
-	svc.GetRandomNarration("ja")
-	svc.GetRandomNarration("ja")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewNarrationService(&fakeRepository{narrations: tt.narrations})
+			got, err := svc.GetRandomNarrations(tt.episodes, tt.lang)
 
-	if repo.callCount != 2 {
-		t.Errorf("FindAll の呼び出し回数 = %d, want 2", repo.callCount)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("err = %v, want %v", err, tt.wantErr)
+				}
+				if got != nil {
+					t.Errorf("エラー時の戻り値 = %d件, want nil", len(got))
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("予期しないエラー: %v", err)
+			}
+			if got == nil {
+				t.Fatal("ナレーションを期待したが nil だった")
+			}
+
+			if len(got) != tt.episodes {
+				t.Fatalf("got %d, want %d", len(got), tt.episodes)
+			}
+
+			seen := map[int]bool{}
+			for _, n := range got {
+				if n.Title[tt.lang] == nil || n.Narrations[tt.lang] == nil {
+					t.Errorf("episode %d は %s が未翻訳のため返ってはいけない", n.Episode, tt.lang)
+				}
+				if seen[n.Episode] {
+					t.Errorf("episode %d が重複している", n.Episode)
+				}
+				seen[n.Episode] = true
+			}
+		})
+	}
+}
+
+func TestNarrationService_GetRandomNarrations_範囲外のepisodesはエラー(t *testing.T) {
+	episodes := []int{0, -1, 64}
+
+	for _, e := range episodes {
+		t.Run(fmt.Sprint(e), func(t *testing.T) {
+			svc := NewNarrationService(&fakeRepository{})
+			got, err := svc.GetRandomNarrations(e, "ja")
+
+			if !errors.Is(err, model.ErrInvalidEpisodes) {
+				t.Fatalf("err = %v, want %v", err, model.ErrInvalidEpisodes)
+			}
+
+			if got != nil {
+				t.Fatalf("nil を期待したが episode %d が返った", len(got))
+			}
+		})
 	}
 }
