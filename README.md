@@ -1,6 +1,6 @@
 # 本リポジトリについて
 
-[![CI](https://github.com/v420v/fullmetal_api/actions/workflows/ci.yml/badge.svg)](https://github.com/ryutaKimu/fullmetal_api/actions/workflows/ci.yml)
+[![CI](https://github.com/ryutaKimu/fullmetal_api/actions/workflows/ci.yml/badge.svg)](https://github.com/ryutaKimu/fullmetal_api/actions/workflows/ci.yml)
 
 こちらは鋼の錬金術師のナレーションを返す非公式APIです。
 あくまでファンメイドであるため、公式とは一切関係ありません。
