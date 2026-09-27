@@ -30,9 +30,10 @@ APIはパスの先頭でバージョンを指定します（現行バージョ�
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | GET | `/v1/narrations/random` | ナレーションを1件ランダムに返す |
+| GET | `/v1/narrations/random/{episodes}` | ナレーションを指定件数分、重複なしでランダムに返す |
 | GET | `/v1/narrations/{episode}` | エピソードで指定されたナレーションを返す |
 
-現在はこの2つのみです。ルート（`/`）を含む他のパスは 404 を返します。
+現在はこの3つのみです。ルート（`/`）を含む他のパスは 404 を返します。
 
 バージョン導入前の旧パス `/narrations/...` へのアクセスは、互換性のため対応する `/v1/narrations/...` へ 308 リダイレクトされます（クエリパラメータも引き継がれます）。新規の利用では `/v1` を直接指定してください。
 
@@ -41,6 +42,7 @@ APIはパスの先頭でバージョンを指定します（現行バージョ�
 | 名前 | 値 | 説明 |
 | --- | --- | --- |
 | `episode` | `1`〜`63` | 取得するエピソード。整数でない場合は 400、該当データがない場合は 404 |
+| `episodes` | `1`〜`63` | 取得する件数（エピソード番号ではありません）。整数でない場合・範囲外の場合は 400、指定言語で取得できる件数が足りない場合は 404 |
 
 ## クエリパラメータ
 
@@ -67,6 +69,36 @@ APIはパスの先頭でバージョンを指定します（現行バージョ�
 }
 ```
 
+`/v1/narrations/random/{episodes}` でデータがある場合（200）
+
+`data` は配列で、件数は `episodes` と一致します。同じエピソードが重複することはなく、並び順はランダムです。
+
+```json
+{
+  "data": [
+    {
+      "episode": 3,
+      "title": "邪教の街",
+      "narrations": [
+        "リオールでの一件を報告するため、東方司令部のある町イーストシティを訪れたエドとアルは、綴命の錬金術師ショウ・タッカーと彼の娘ニーナに出会う",
+        "次回、鋼の錬金術師 FULLMETAL ALCHEMIST 第4話『錬金術師の苦悩』",
+        "出会い、それは苦しみの始まりか"
+      ]
+    },
+    {
+      "episode": 1,
+      "title": "鋼の錬金術師",
+      "narrations": [
+        "リゼンブール、そこは少年達が生まれ、母と供に過ごした優しい町",
+        "失った笑顔を求め、少年達は禁忌を犯し、真理を目撃する",
+        "次回、鋼の錬金術師 FULLMETAL ALCHEMIST 第2話『はじまりの日』",
+        "旅立ちを決めたのは、自分の心"
+      ]
+    }
+  ]
+}
+```
+
 `/v1/narrations/random` で該当データがない場合（200）
 
 ```json
@@ -81,10 +113,18 @@ APIはパスの先頭でバージョンを指定します（現行バージョ�
 
 エピソードが存在しない場合と、存在しても指定言語が未翻訳の場合は、どちらもこの 404 になります。
 
-`episode` が整数でない場合（400）
+`/v1/narrations/random/{episodes}` で、指定言語で取得できる件数が `episodes` に足りない場合も、同じ 404 を返します（足りる分だけを返すことはしません）。
+
+`episode` / `episodes` が整数でない場合（400）
 
 ```json
 { "data": null, "error": "episode must be an integer" }
+```
+
+`episodes` が `1`〜`63` の範囲外の場合（400）
+
+```json
+{ "data": null, "error": "episodes must be between 1 and 63" }
 ```
 
 対応していない言語を指定した場合（400）
@@ -100,7 +140,7 @@ APIはパスの先頭でバージョンを指定します（現行バージョ�
 - 全63件（episode 1〜63）
 - **日本語（`ja`）のみ収録済み。英語（`en`）は全件未翻訳（null）です。**
 
-`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は `/v1/narrations/random` なら 200 + `{ "data": null }`、`/v1/narrations/{episode}` なら 404 を返します。英訳は今後、段階的に追加していく予定です。
+`lang` 指定時は title と narrations の両方が非nullのデータだけを対象にするため、現状 `?lang=en` は `/v1/narrations/random` なら 200 + `{ "data": null }`、`/v1/narrations/random/{episodes}` と `/v1/narrations/{episode}` なら 404 を返します。英訳は今後、段階的に追加していく予定です。
 
 # ローカルでの実行
 
@@ -110,6 +150,7 @@ go run ./cmd/api
 
 curl "http://localhost:9090/v1/narrations/random"
 curl "http://localhost:9090/v1/narrations/random?lang=en"
+curl "http://localhost:9090/v1/narrations/random/3"
 curl "http://localhost:9090/v1/narrations/5"
 ```
 
