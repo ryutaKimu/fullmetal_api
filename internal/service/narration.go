@@ -46,9 +46,9 @@ func (s NarrationService) GetRandomNarrations(episodes int, lang string) ([]*mod
 	if episodes > 63 || episodes <= 0 {
 		return nil, fmt.Errorf("episodes:%d error:%w", episodes, model.ErrInvalidEpisodes)
 	}
-	var candidates []*model.Narration
-	narrations := s.repo.FindAll()
 
+	narrations := s.repo.FindAll()
+	candidates := make([]*model.Narration, 0, len(narrations))
 	for i := range narrations {
 		if hasTranslation(narrations[i], lang) {
 			candidates = append(candidates, &narrations[i])
@@ -59,9 +59,10 @@ func (s NarrationService) GetRandomNarrations(episodes int, lang string) ([]*mod
 		return nil, fmt.Errorf("candidates:%d less than episodes: %d error:%w", len(candidates), episodes, model.ErrNotFound)
 	}
 
-	rand.Shuffle(len(candidates), func(i, j int) {
+	for i := range episodes {
+		j := i + rand.IntN(len(candidates)-i)
 		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
+	}
 
 	return candidates[:episodes], nil
 }
