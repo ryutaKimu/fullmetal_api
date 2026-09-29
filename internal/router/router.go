@@ -6,11 +6,15 @@ import (
 	"fullmetal-api/internal/handler"
 )
 
-func New(h *handler.NarrationHandler) *http.ServeMux {
+func New(h *handler.NarrationHandler) http.Handler {
 	mux := http.NewServeMux()
 	registerV1(mux, h)
 	registerLegacyRedirects(mux)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 認証なし・読み取り専用の公開APIなので全オリジンを許可する。
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func registerV1(mux *http.ServeMux, h *handler.NarrationHandler) {
