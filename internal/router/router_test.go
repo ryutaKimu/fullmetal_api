@@ -99,6 +99,31 @@ func TestLegacyパスはv1へリダイレクトする(t *testing.T) {
 	}
 }
 
+// ブラウザはリダイレクトやエラーの応答にもCORSのチェックをかけるため、成功時以外も確認する
+func Test全レスポンスにCORSヘッダが付く(t *testing.T) {
+	tests := []struct {
+		target     string
+		wantStatus int
+	}{
+		{"/v1/narrations/random", http.StatusOK},
+		{"/v1/narrations/random?lang=fr", http.StatusBadRequest},
+		{"/narrations/random", http.StatusPermanentRedirect},
+		{"/v1/unknown", http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.target, func(t *testing.T) {
+			_, rec := doRequest(t, tt.target)
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "*")
+			}
+		})
+	}
+}
+
 func Test未定義のパスは404を返す(t *testing.T) {
 	for _, target := range []string{"/", "/v1", "/v1/narrations", "/v2/narrations/random"} {
 		t.Run(target, func(t *testing.T) {
